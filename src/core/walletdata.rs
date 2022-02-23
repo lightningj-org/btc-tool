@@ -1,31 +1,32 @@
+use std::{fs, str};
 use std::fs::File;
-use std::{fs, io, str};
-use std::io::{Error, Write};
+use std::io::{Write};
 use std::path::PathBuf;
+
+use aes_gcm::{Aes256Gcm, Key, Nonce};
+use aes_gcm::aead::{Aead, NewAead};
+use bdk::{Wallet};
 use bdk::bitcoin::{Network, PrivateKey};
-use bdk::bitcoin::util::bip32::ExtendedPrivKey;
-use bdk::{KeychainKind, Wallet};
-use bdk::bitcoin::util::key::Error::Base58;
-use bdk::bitcoin::util::psbt::PsbtParseError::Base64Encoding;
-use bdk::blockchain::Blockchain;
-use bdk::database::{BatchDatabase, Database};
+use bdk::blockchain::{AnyBlockchain, Blockchain};
+use bdk::database::{AnyDatabase, BatchDatabase};
 use pbkdf2::{
     password_hash::{
-        rand_core::OsRng,
-        PasswordHash, PasswordHasher, PasswordVerifier, SaltString
+        PasswordHasher, rand_core::OsRng, SaltString
     },
     Pbkdf2
 };
-use aes_gcm::{Aes256Gcm, Key, Nonce};
-use aes_gcm::aead::{Aead, NewAead};
 use pbkdf2::password_hash::Salt;
 use rand_core::RngCore;
 use string_error::{into_err, new_err};
 
-use crate::settings::get_or_create_app_dir;
+use crate::core::settings::get_or_create_app_dir;
+use crate::core::walletcontainer::WalletContainer;
+use crate::Settings;
 
 /// Wallet file postfix '.wallet'
-static WALLET_DATA_POSTFIX : &str=".wallet";
+pub static WALLET_DATA_POSTFIX : &str=".wallet";
+/// Wallet file postfix '.wallet'
+pub static WALLET_DB_POSTFIX : &str=".db";
 
 /// WalletData is a wallet specific data structure that
 /// is serializable into YAML and is stored into a wallet
@@ -42,6 +43,8 @@ pub struct WalletData {
     pub internal_descriptor: String,
     // The related network
     pub network : Network,
+    // IF wallet is an offline or online wallet
+    pub online: bool,
 }
 
 impl WalletData {
@@ -53,35 +56,43 @@ impl WalletData {
     /// * wallet: the wallet to build the wallet data structure from
     /// * priv_key: the related private key.
     ///
-    pub fn new<B,D>(name: String, wallet: &Wallet<B, D>, priv_key: &PrivateKey) -> WalletData
+    pub fn new<B,D>(name: &String, wallet: &Wallet<B, D>,
+                    external_descriptor: &String,
+                    internal_descriptor: &String,
+                    priv_key: &PrivateKey) -> WalletData
     where
       B : Blockchain,
       D : BatchDatabase, {
         WalletData{
-            name,
+            name : name.clone(),
             xpriv: priv_key.to_wif(),
-            external_descriptor: wallet.get_descriptor_for_keychain(KeychainKind::External).to_string(),
-            internal_descriptor: wallet.get_descriptor_for_keychain(KeychainKind::Internal).to_string(),
-            network: wallet.network()
+            external_descriptor: external_descriptor.clone(),
+            internal_descriptor: internal_descriptor.clone(),
+            network: wallet.network(),
+            online: true,
         }
     }
 
-    /// Creates a new WalletData from given offline wallet.
+    /// Creates a new WalletData from given nowallet wallet.
     ///
     /// # Arguments
     /// * name: the name of the wallet.
     /// * wallet: the wallet to build the wallet data structure from
     /// * priv_key: the related private key.
     ///
-    pub fn new_offline<D>(name: String, wallet: &Wallet<(), D>, priv_key: &PrivateKey) -> WalletData
+    pub fn _new_offline<D>(name: String, wallet: &Wallet<(), D>,
+                           external_descriptor: &String,
+                           internal_descriptor: &String,
+                           priv_key: &PrivateKey) -> WalletData
         where
             D : BatchDatabase, {
         WalletData{
             name,
             xpriv: priv_key.to_wif(),
-            external_descriptor: wallet.get_descriptor_for_keychain(KeychainKind::External).to_string(),
-            internal_descriptor: wallet.get_descriptor_for_keychain(KeychainKind::Internal).to_string(),
-            network: wallet.network()
+            external_descriptor: external_descriptor.clone(),
+            internal_descriptor: internal_descriptor.clone(),
+            network: wallet.network(),
+            online: false,
         }
     }
 
@@ -126,12 +137,57 @@ impl WalletData {
 
         Ok(())
     }
+
+    /// Method to convert a Wallet Data to a Online Wallet and PrivateKey tuple.
+    ///
+    /// # Arguments
+    /// * settings: The application settings.
+    ///
+    pub fn to_wallet(self : &Self, settings : &Settings) -> Result<(WalletContainer, PrivateKey),Box<dyn std::error::Error>> {
+
+        let database = settings.get_wallet_database(&self.name)?;
+        let priv_key = PrivateKey::from_wif(&self.xpriv)?;
+
+        let wallet_container = match &self.online {
+            true => {
+                let blockchain = settings.get_wallet_blockchain()?;
+                let wallet: Wallet<AnyBlockchain, AnyDatabase> = Wallet::new(
+                    &self.external_descriptor,
+                    Some(&self.internal_descriptor),
+                    self.network,
+                    database,
+                    blockchain,
+                )?;
+                WalletContainer::new_online(wallet)
+            }
+            false => {
+                let wallet: Wallet<(), AnyDatabase> = Wallet::new_offline(
+                    &self.external_descriptor,
+                    Some(&self.internal_descriptor),
+                    self.network,
+                    database,
+                )?;
+                WalletContainer::new_offline(wallet)
+            }
+        };
+
+        Ok((wallet_container,priv_key))
+    }
+
+
 }
 
 /// Help method to retrieve the file path to wallet with given name
-fn get_wallet_path(name : &String) ->  Result<PathBuf,Box<dyn std::error::Error>>{
+pub fn get_wallet_path(name : &String) ->  Result<PathBuf,Box<dyn std::error::Error>>{
     let mut target_file = get_or_create_app_dir()?;
     target_file.push(format!("{}{}",name,WALLET_DATA_POSTFIX));
+    return Ok(target_file);
+}
+
+/// Help method to retrieve the file path to wallet with given name
+pub fn get_wallet_db_path(name : &String) ->  Result<PathBuf,Box<dyn std::error::Error>>{
+    let mut target_file = get_or_create_app_dir()?;
+    target_file.push(format!("{}{}",name,WALLET_DB_POSTFIX));
     return Ok(target_file);
 }
 
@@ -171,31 +227,37 @@ fn decrypt(data : Vec<u8>, password : &String) -> Result<String,Box<dyn std::err
     let nonce = Nonce::from_slice(&data[22..34]);
     let cipher = Aes256Gcm::new(Key::from_slice(key.as_bytes()));
     let enc_data = &data[34..];
-    let plaintext = cipher.decrypt(nonce, enc_data.as_ref()).map_err(|err| into_err(format!("Error decrypting wallet data: {}",err)))?;
+    let plaintext = cipher.decrypt(nonce, enc_data.as_ref()).map_err(|err| into_err(format!("Error decrypting wallet data, was password correct?: {}",err)))?;
     Ok(String::from_utf8(plaintext)?)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use std::env;
     use bdk::bitcoin::Network;
+    use bdk::bitcoin::Network::Testnet;
     use bdk::blockchain::ElectrumBlockchain;
     use bdk::database::MemoryDatabase;
+    use crate::core::settings::ENV_VAR_BTC_TOOL_HOME;
+
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
 
     #[test]
     fn test_new() {
         // Setup
+        set_home_dir();
         let priv_key = PrivateKey::from_wif("cQbJPGrjG62SL7z1gRDE7eNjkcuUZYK2TT1MsD3mBfKD5xiooJXG").unwrap();
+        let external_descriptor = "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/0/0/*)#t05p4h3u".to_string();
+        let internal_descriptor = "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/1/0/*)#mf7s98y9".to_string();
         let wallet= Wallet::new(
-            "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/0/0/*)#t05p4h3u",
-            Some("wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/1/0/*)#mf7s98y9"),
+            &external_descriptor,
+            Some(&internal_descriptor),
             Network::Testnet,
             MemoryDatabase::default(),
             ElectrumBlockchain::from(bdk::electrum_client::Client::new("ssl://electrum.blockstream.info:60002").unwrap())).unwrap();
         // When
-        let wallet_data = WalletData::new("test1".to_string(), &wallet, &priv_key);
+        let wallet_data = WalletData::new(&"test1".to_string(), &wallet, &external_descriptor, &internal_descriptor,&priv_key);
 
         // Then
         assert_eq!(wallet_data.name, "test1".to_string());
@@ -208,14 +270,17 @@ mod tests {
     #[test]
     fn test_new_offline() {
         // Setup
+        set_home_dir();
         let priv_key = PrivateKey::from_wif("cQbJPGrjG62SL7z1gRDE7eNjkcuUZYK2TT1MsD3mBfKD5xiooJXG").unwrap();
+        let external_descriptor = "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/0/0/*)#t05p4h3u".to_string();
+        let internal_descriptor = "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/1/0/*)#mf7s98y9".to_string();
         let wallet = Wallet::new_offline(
-            "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/0/0/*)#t05p4h3u",
-            Some("wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/1/0/*)#mf7s98y9"),
+            &external_descriptor,
+            Some(&internal_descriptor),
             Network::Testnet,
             MemoryDatabase::default()).unwrap();
         // When
-        let wallet_data = WalletData::new_offline("test1".to_string(), &wallet, &priv_key);
+        let wallet_data = WalletData::_new_offline("test1".to_string(), &wallet, &external_descriptor, &internal_descriptor, &priv_key);
 
         // Then
         assert_eq!(wallet_data.name, "test1".to_string());
@@ -228,15 +293,16 @@ mod tests {
     #[test]
     fn test_exists_save_and_load(){
         // setup
+        set_home_dir();
         let wallet_name = "test123".to_string();
         let password = "foo123".to_string();
         let wallet_path = get_wallet_path(&wallet_name).unwrap();
-        fs::remove_file(&wallet_path);
+        let _ = fs::remove_file(&wallet_path);
         let wallet_data = gen_wallet_data("test123".to_string());
         // Verify that exists returns wallet if file does not exist.
         assert!(!WalletData::exists(&wallet_name).unwrap());
         // Save wallet
-        wallet_data.save(&password);
+        let _ = wallet_data.save(&password);
         // Verify the file exists
         assert!(WalletData::exists(&wallet_name).unwrap());
         // Load the wallet
@@ -245,6 +311,23 @@ mod tests {
         assert_eq!(wallet_data.name, loaded_wallet_data.name);
         // Cleanup
         fs::remove_file(&wallet_path).unwrap();
+    }
+
+    #[test]
+    fn test_to_wallet(){
+        // setup
+        set_home_dir();
+        let wallet_name = "test123".to_string();
+        let wallet_path = get_wallet_path(&wallet_name).unwrap();
+        let _ = fs::remove_file(&wallet_path);
+        let wallet_data = gen_wallet_data(wallet_name.clone());
+        let settings = gen_settings();
+        // When
+        let (wallet, private_key) = wallet_data.to_wallet(&settings).unwrap();
+        // Then
+        assert!(!wallet.is_online());
+        assert_eq!(private_key.network, Testnet);
+    
     }
 
     #[test]
@@ -257,11 +340,24 @@ mod tests {
     /// Help method to generate a populated WalletData
     fn gen_wallet_data(name: String) -> WalletData {
         let priv_key = PrivateKey::from_wif("cQbJPGrjG62SL7z1gRDE7eNjkcuUZYK2TT1MsD3mBfKD5xiooJXG").unwrap();
+        let external_descriptor = "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/0/0/*)#t05p4h3u".to_string();
+        let internal_descriptor = "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/1/0/*)#mf7s98y9".to_string();
         let wallet = Wallet::new_offline(
-            "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/0/0/*)#t05p4h3u",
-            Some("wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/1/0/*)#mf7s98y9"),
+            &external_descriptor,
+            Some(&internal_descriptor),
             Network::Testnet,
             MemoryDatabase::default()).unwrap();
-        return WalletData::new_offline(name, &wallet, &priv_key);
+        return WalletData::_new_offline(name, &wallet, &external_descriptor, &internal_descriptor,&priv_key);
+    }
+
+    fn gen_settings() -> Settings{
+        return Settings{
+            debug: false,
+            electrum_url: "".to_string()
+        }
+    }
+
+    fn set_home_dir(){
+        env::set_var(ENV_VAR_BTC_TOOL_HOME, "target/tmp");
     }
 }

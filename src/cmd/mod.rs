@@ -1,3 +1,5 @@
 pub mod command;
-pub mod createwalletcmd;
-pub mod importwalletcmd;
+pub mod nowallet;
+pub mod wallet;
+
+
