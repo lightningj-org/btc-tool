@@ -107,12 +107,12 @@ fn verify_import_new_wallet(name: &str) -> Result<(), Box<dyn std::error::Error>
     let mut stdin_buff = vec![];
     // First word is wrong and should prompt reentry
     stdin_buff.push("blir\n");
-    // Enter all seed 24 words
-    stdin_buff.push("blur\nsight\nelephant\ngrow\ndust\nhammer\nmaid\nwing\nlens\nlonely\ncasino\nanchor\ncliff\nportion\nedit\nvirus\nmaid\npair\nkitchen\nbelt\nverb\nunaware\nshed\ncart\n");
-    // Enter invalid confirmation then wnat to enter seed phrases again
+    // Enter all seed 12 words
+    stdin_buff.push("general\nvessel\npayment\nvintage\npatch\nroyal\nsituate\nuntil\ngift\ndefy\nlock\ndisease\n");
+    // Enter invalid confirmation then want to enter seed phrases again
     stdin_buff.push("invalid\nno\n");
-    // Enter seed prases again, but word 2 wrong this time
-    stdin_buff.push("blur\nsght\nsight\nelephant\ngrow\ndust\nhammer\nmaid\nwing\nlens\nlonely\ncasino\nanchor\ncliff\nportion\nedit\nvirus\nmaid\npair\nkitchen\nbelt\nverb\nunaware\nshed\ncart\n");
+    // Enter seed phrases again, but word 2 wrong this time
+    stdin_buff.push("general\nvkssel\nvessel\npayment\nvintage\npatch\nroyal\nsituate\nuntil\ngift\ndefy\nlock\ndisease\n");
     // Confirm
     stdin_buff.push("yes\n");
     cmd.write_stdin(stdin_buff.join(""));
@@ -123,7 +123,7 @@ fn verify_import_new_wallet(name: &str) -> Result<(), Box<dyn std::error::Error>
         .stdout(predicate::str::contains("Enter your seed phrases (Use Ctrl-C to abort)"))
         .stdout(predicate::str::contains("Enter word 1:"))
         .stdout(predicate::str::contains("Invalid word 1 entered, try again"))
-        .stdout(predicate::str::contains("Enter word 24:"))
+        .stdout(predicate::str::contains("Enter word 12:"))
         .stdout(predicate::str::contains("You have entered the following seed phrases:"))
         .stdout(predicate::str::contains("Is this correct? (yes,no):"))
         .stdout(predicate::str::contains("Invalid input, enter 'yes' or 'no'."))

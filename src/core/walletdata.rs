@@ -232,7 +232,6 @@ mod tests {
     use std::env;
     use bdk::bitcoin::Network;
     use bdk::bitcoin::Network::Testnet;
-    use bdk::blockchain::ElectrumBlockchain;
     use bdk::database::MemoryDatabase;
     use crate::core::settings::ENV_VAR_BTC_TOOL_HOME;
 
