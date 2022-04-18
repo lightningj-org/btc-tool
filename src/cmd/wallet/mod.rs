@@ -1,5 +1,5 @@
 use bdk::blockchain::{noop_progress};
-use bdk::TransactionDetails;
+use bdk::{SyncOptions, TransactionDetails};
 use cli_table::{Cell, CellStruct, Style, Table, TableStruct};
 use string_error::new_err;
 
@@ -29,8 +29,10 @@ pub fn get_wallet(name : &String, settings: &Settings) ->  Result<(WalletContain
 pub fn sync_wallet(wallet : &WalletContainer) -> Result<(),Box<dyn std::error::Error>>{
     if wallet.is_online() {
         println!("Synchronizing Blockchain...");
-        let online_wallet = wallet.get_online_wallet()?;
-        online_wallet.sync(noop_progress(), None)?;
+        let (online_wallet, blockchain) = wallet.get_online_wallet()?;
+        online_wallet.sync(blockchain, SyncOptions {
+            progress: Some(Box::new(noop_progress())),
+        })?;
         println!("Sync Complete.");
         println!();
     }
@@ -49,7 +51,6 @@ pub fn gen_transaction_table(transactions : &Vec<TransactionDetails>) -> TableSt
                 None => "None".to_string(),
                 Some(fee_value) => format!("{}", fee_value)
             }.cell(),
-            transaction.verified.to_string().cell(),
             match &transaction.confirmation_time {
                 None => "None".to_string(),
                 Some(confirm_time) => format!("{}", confirm_time.height)
@@ -61,7 +62,6 @@ pub fn gen_transaction_table(transactions : &Vec<TransactionDetails>) -> TableSt
         "Sent".cell().bold(true),
         "Received".cell().bold(true),
         "Fee".cell().bold(true),
-        "Verified".cell().bold(true),
         "Confirmation Block".cell().bold(true),
     ])
 }

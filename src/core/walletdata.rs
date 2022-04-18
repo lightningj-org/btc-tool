@@ -7,7 +7,6 @@ use aes_gcm::{Aes256Gcm, Key, Nonce};
 use aes_gcm::aead::{Aead, NewAead};
 use bdk::{Wallet};
 use bdk::bitcoin::{Network, PrivateKey};
-use bdk::blockchain::{AnyBlockchain, Blockchain};
 use bdk::database::{AnyDatabase, BatchDatabase};
 use pbkdf2::{
     password_hash::{
@@ -56,12 +55,11 @@ impl WalletData {
     /// * wallet: the wallet to build the wallet data structure from
     /// * priv_key: the related private key.
     ///
-    pub fn new<B,D>(name: &String, wallet: &Wallet<B, D>,
+    pub fn new<D>(name: &String, wallet: &Wallet<D>,
                     external_descriptor: &String,
                     internal_descriptor: &String,
                     priv_key: &PrivateKey) -> WalletData
     where
-      B : Blockchain,
       D : BatchDatabase, {
         WalletData{
             name : name.clone(),
@@ -80,7 +78,7 @@ impl WalletData {
     /// * wallet: the wallet to build the wallet data structure from
     /// * priv_key: the related private key.
     ///
-    pub fn _new_offline<D>(name: String, wallet: &Wallet<(), D>,
+    pub fn _new_offline<D>(name: String, wallet: &Wallet<D>,
                            external_descriptor: &String,
                            internal_descriptor: &String,
                            priv_key: &PrivateKey) -> WalletData
@@ -150,18 +148,16 @@ impl WalletData {
 
         let wallet_container = match &self.online {
             true => {
-                let blockchain = settings.get_wallet_blockchain()?;
-                let wallet: Wallet<AnyBlockchain, AnyDatabase> = Wallet::new(
+                let wallet: Wallet<AnyDatabase> = Wallet::new(
                     &self.external_descriptor,
                     Some(&self.internal_descriptor),
                     self.network,
                     database,
-                    blockchain,
                 )?;
-                WalletContainer::new_online(wallet)
+                WalletContainer::new_online(wallet, settings.get_wallet_blockchain()?)
             }
             false => {
-                let wallet: Wallet<(), AnyDatabase> = Wallet::new_offline(
+                let wallet: Wallet<AnyDatabase> = Wallet::new(
                     &self.external_descriptor,
                     Some(&self.internal_descriptor),
                     self.network,
@@ -254,8 +250,8 @@ mod tests {
             &external_descriptor,
             Some(&internal_descriptor),
             Network::Testnet,
-            MemoryDatabase::default(),
-            ElectrumBlockchain::from(bdk::electrum_client::Client::new("ssl://electrum.blockstream.info:60002").unwrap())).unwrap();
+            MemoryDatabase::default()).unwrap();
+
         // When
         let wallet_data = WalletData::new(&"test1".to_string(), &wallet, &external_descriptor, &internal_descriptor,&priv_key);
 
@@ -274,7 +270,7 @@ mod tests {
         let priv_key = PrivateKey::from_wif("cQbJPGrjG62SL7z1gRDE7eNjkcuUZYK2TT1MsD3mBfKD5xiooJXG").unwrap();
         let external_descriptor = "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/0/0/*)#t05p4h3u".to_string();
         let internal_descriptor = "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/1/0/*)#mf7s98y9".to_string();
-        let wallet = Wallet::new_offline(
+        let wallet = Wallet::new(
             &external_descriptor,
             Some(&internal_descriptor),
             Network::Testnet,
@@ -342,7 +338,7 @@ mod tests {
         let priv_key = PrivateKey::from_wif("cQbJPGrjG62SL7z1gRDE7eNjkcuUZYK2TT1MsD3mBfKD5xiooJXG").unwrap();
         let external_descriptor = "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/0/0/*)#t05p4h3u".to_string();
         let internal_descriptor = "wpkh([c77e62a6/84'/1'/0']tpubDCAQ9F8i3jjydhAPapH2XWjjfj4RAc9HBefQHBbLhgiCxKdQdzwRLY7eUEoY3KjjsFM5brW5RPrSnDbxgXv6S4ZNv8nSWxbkndDYgCBxf2U/1/0/*)#mf7s98y9".to_string();
-        let wallet = Wallet::new_offline(
+        let wallet = Wallet::new(
             &external_descriptor,
             Some(&internal_descriptor),
             Network::Testnet,

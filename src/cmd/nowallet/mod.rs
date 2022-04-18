@@ -3,7 +3,6 @@ use std::fmt::Display;
 use std::path::PathBuf;
 use std::str::FromStr;
 use bdk::bitcoin::util::bip32::{DerivationPath, ExtendedPrivKey};
-use bdk::blockchain::AnyBlockchain;
 use bdk::database::AnyDatabase;
 use bdk::keys::bip39::Mnemonic;
 use bdk::Wallet;
@@ -19,8 +18,6 @@ pub fn gen_seed_word_table<T : Display>(words : &Vec<T>) -> TableStruct {
     vec![
         vec![format!(" 1: {}",words[0]).cell(),format!(" 2: {}",words[1]).cell(),format!(" 3: {}",words[2]).cell(),format!(" 4: {}",words[3]).cell(),format!(" 5: {}",words[4]).cell(),format!(" 6: {}",words[5]).cell()],
         vec![format!(" 7: {}",words[6]).cell(),format!(" 8: {}",words[7]).cell(),format!(" 9: {}",words[8]).cell(),format!("10: {}",words[9]).cell(),format!("11: {}",words[10]).cell(),format!("12: {}",words[11]).cell()],
-        vec![format!("13: {}",words[12]).cell(),format!("14: {}",words[13]).cell(),format!("15: {}",words[14]).cell(),format!("16: {}",words[15]).cell(),format!("17: {}",words[16]).cell(),format!("18: {}",words[17]).cell()],
-        vec![format!("19: {}",words[18]).cell(),format!("20: {}",words[19]).cell(),format!("21: {}",words[20]).cell(),format!("22: {}",words[21]).cell(),format!("23: {}",words[22]).cell(),format!("24: {}",words[23]).cell()],
     ].table()
 }
 
@@ -46,14 +43,12 @@ pub(crate) fn create_online_wallet(name : &String, chain : &Chain,
     wallet_db_path.push(format!("{}.db",name));
 
     let database = settings.get_wallet_database(name)?;
-    let blockchain = settings.get_wallet_blockchain()?;
 
-    let wallet: Wallet<AnyBlockchain, AnyDatabase> = Wallet::new(
+    let wallet: Wallet<AnyDatabase> = Wallet::new(
         &ext_descriptor_with_secret,
         Some(&int_descriptor_with_secret),
         network,
-        database,
-        blockchain
+        database
     )?;
 
     let wallet_data = WalletData::new(name,&wallet,

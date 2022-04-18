@@ -2,6 +2,7 @@ use std::error::Error;
 use std::str::FromStr;
 use bdk::bitcoin::Address;
 use bdk::{FeeRate, SignOptions};
+use bdk::blockchain::Blockchain;
 use cli_table::print_stdout;
 use string_error::into_err;
 
@@ -32,7 +33,7 @@ impl Command for SendCmd {
         let (wallet, _) = get_wallet(&self.name, &self.settings)?;
         let _ = sync_wallet(&wallet)?;
 
-        let online_wallet = wallet.get_online_wallet()?;
+        let (online_wallet, blockchain) = wallet.get_online_wallet()?;
 
         let address = Address::from_str(self.to_address.as_str()).map_err(|e| into_err(format!("Invalid address specified: {}",e)))?;
         let mut tx_builder = online_wallet.build_tx();
@@ -49,7 +50,8 @@ impl Command for SendCmd {
         let finalized = online_wallet.sign(&mut psbt, SignOptions::default())?;
         if finalized {
             let raw_transaction = psbt.extract_tx();
-            let txid = online_wallet.broadcast(&raw_transaction)?;
+            blockchain.broadcast(&raw_transaction)?;
+            let txid = &raw_transaction.txid();
             println!(
                 "Transaction sent to Network.\nExplorer URL: https://blockstream.info/testnet/tx/{txid}",
                 txid = txid

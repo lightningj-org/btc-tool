@@ -47,7 +47,7 @@ impl Command for ImportWalletCmd {
             println!("Enter your seed phrases (Use Ctrl-C to abort): ");
 
             words = vec![];
-            for n in 1..25 {
+            for n in 1..13 {
                 let word = get_word( n)?;
                 words.push(word)
             }

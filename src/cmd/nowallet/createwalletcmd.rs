@@ -49,7 +49,7 @@ impl Command for CreateWalletCmd {
         let mut rng = rand::thread_rng();
         let mnemonic = Mnemonic::generate_in_with(&mut rng,
                                                   Language::English,
-                                                  24)
+                                                  12)
             .map_err(|_| bdk::Error::Generic("Mnemonic generation error".to_string()))?;
         let words : Vec<&'static str> = mnemonic.word_iter().collect();
 
