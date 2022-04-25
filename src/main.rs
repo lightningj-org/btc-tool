@@ -12,7 +12,7 @@ use std::fmt::Debug;
 use bdk::bitcoin::{Network, PrivateKey};
 use cmd::command::Command;
 use crate::core::settings::Settings;
-use clap::{AppSettings, ArgEnum, Parser, Subcommand};
+use clap::{ArgEnum, Parser, Subcommand};
 use crate::cmd::nowallet::createwalletcmd::CreateWalletCmd;
 use crate::cmd::nowallet::importwalletcmd::ImportWalletCmd;
 use crate::cmd::wallet::getbalancecmd::GetBalanceCmd;
@@ -25,8 +25,6 @@ use crate::core::walletdata::WalletData;
 // Btc Tool TODO
 #[derive(Parser)]
 #[clap(author, version, about)]
-#[clap(global_setting(AppSettings::PropagateVersion))]
-#[clap(global_setting(AppSettings::UseLongFormatForHelpSubcommand))]
 struct NoWalletCli {
     #[clap(subcommand)]
     command: NoWalletCommands,
@@ -35,8 +33,6 @@ struct NoWalletCli {
 // Btc Tool TODO
 #[derive(Parser)]
 #[clap(author, version, about)]
-#[clap(global_setting(AppSettings::PropagateVersion))]
-#[clap(global_setting(AppSettings::UseLongFormatForHelpSubcommand))]
 struct OnlineWalletCli {
     #[clap(subcommand)]
     command: OnlineWalletCommands,
