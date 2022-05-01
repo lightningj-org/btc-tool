@@ -20,7 +20,7 @@ impl Command for GetBalanceCmd {
     fn execute(self : &Self) -> Result<(), Box<dyn Error>>{
         let (wallet, _) = get_wallet(&self.name, &self.settings)?;
         let _ = sync_wallet(&wallet)?;
-        println!("Current balance: {}", wallet.get_balance()?);
+        println!("Current balance: {} SAT", wallet.get_balance()?);
         Ok(())
     }
 }

@@ -190,8 +190,6 @@ fn verify_new_address(name: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Synchronizing Blockchain..."))
-        .stdout(predicate::str::contains("Sync Complete."))
         .stdout(predicate::str::contains("New address: "));
 
     Ok(())
