@@ -22,7 +22,6 @@ use crate::cmd::wallet::sendcmd::SendCmd;
 use crate::core::password::read_password;
 use crate::core::walletdata::WalletData;
 
-// Btc Tool TODO
 #[derive(Parser)]
 #[clap(author, version, about)]
 struct NoWalletCli {
@@ -30,7 +29,6 @@ struct NoWalletCli {
     command: NoWalletCommands,
 }
 
-// Btc Tool TODO
 #[derive(Parser)]
 #[clap(author, version, about)]
 struct OnlineWalletCli {
@@ -104,8 +102,6 @@ pub enum Chain {
     Testnet,
     Mainnet,
 }
-
-// TODO Create lib
 
 fn get_chain_name(chain : &Chain) -> Network {
     match chain {
